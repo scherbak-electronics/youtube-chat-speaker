@@ -6,11 +6,12 @@ var arguments = process.argv;
 let messagesLastCount = 0;
 let messageLoopInterval;
 let livechatid;
+let isCommandExecuting = false;
 
 async function run(id) {
   try {
     var res = await fetch(
-      `https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&key=${secret.apiKey}&id=${id}`
+        `https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&key=${secret.apiKey}&id=${id}`
     );
 
     var data = await res.json();
@@ -20,13 +21,19 @@ async function run(id) {
         livechatid = data.items[0].liveStreamingDetails.activeLiveChatId;
         console.info('Live Chat ID: ', livechatid);
         messageLoopInterval = setInterval(async () => {
-          getChatMessages(livechatid)
-              .then(() => {
-                //console.info('ok');
-              })
-              .catch(error  => {
-                console.error(error);
-              });
+          if (!isCommandExecuting) {
+            isCommandExecuting = true;
+            getChatMessages(livechatid)
+                .then(() => {
+                  //console.info('ok');
+                })
+                .catch(error  => {
+                  console.error(error);
+                })
+                .finally(() => {
+                  isCommandExecuting = false;
+                });
+          }
         }, 2000);
       } else {
         error = 'LiveStream not found.';
@@ -44,7 +51,7 @@ async function run(id) {
 async function getChatMessages(chatid) {
   try {
     var res = await fetch(
-      `https://www.googleapis.com/youtube/v3/liveChat/messages?part=id%2C%20snippet&key=${secret.apiKey}&liveChatId=${chatid}`
+        `https://www.googleapis.com/youtube/v3/liveChat/messages?part=id%2C%20snippet&key=${secret.apiKey}&liveChatId=${chatid}`
     );
 
     var data = await res.json();
@@ -58,24 +65,26 @@ async function getChatMessages(chatid) {
             lastMessages += data.items[i].snippet.displayMessage + '. ';
 
           }
-          exec(`say -v 'Yuri' '${lastMessages}'`, (err, stdout, stderr) => {
-            messagesLastCount = data.items.length;
-            console.info('Total messages: ', messagesLastCount);
-            if (stdout) {
-              console.info(stdout);
-            }
-            if (err) {
-              console.error(`exec error: ${err}`);
-              return;
-            }
-            console.log(`say command has been executed with message: ${lastMessages}`);
-          });
-          console.log(' -- ' + i + ' messages returned --')
+          messagesLastCount = data.items.length;
+          return new Promise((resolve, reject) => {
+            exec(`say -v 'Yuri' '${lastMessages}'`, (err, stdout, stderr) => {
+              console.info('Total messages: ', messagesLastCount);
+              if (stdout) {
+                console.info(stdout);
+              }
+              if (err) {
+                console.error(`exec error: ${err}`);
+                reject(err);
+              } else {
+                resolve();
+              }
+              console.log(`say command has been executed with message: ${lastMessages}`);
+            });
+          })
         }
       }
     } else {
-      error = data.error.code + ': ' + data.error.errors[0].reason;
-      throw error;
+      throw data.error.code + ': ' + data.error.errors[0].reason;
     }
   } catch (error) {
     console.log('Oops! ' + error);
@@ -107,6 +116,6 @@ Arguments:              Function:
     break;
   default:
     console.log(
-      'No Valid Argument(s) Passed. Use --help to see valid arguments.'
+        'No Valid Argument(s) Passed. Use --help to see valid arguments.'
     );
 }
